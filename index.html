@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js InstancedMesh with DataTexture</title>
+    <style>body { margin: 0; }</style>
+</head>
+<body>
+<script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.module.js';
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Create a DataTexture (16x16 grid)
+    const size = 16; // 16x16 texture
+    const data = new Uint8Array(size * size * 4); // RGB, so 3 values per pixel
+
+    for (let i = 0; i < size * size; i++) {
+        const stride = i * 4;
+        data[stride] = Math.floor(Math.random() * 256);     // Red channel
+        data[stride + 1] = Math.floor(Math.random() * 256); // Green channel
+        data[stride + 2] = Math.floor(Math.random() * 256); // Blue channel
+        data[stride + 3] = 255; // Blue channel
+    }
+
+    // Creating the DataTexture
+    const dataTexture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    dataTexture.needsUpdate = true; // Mark the texture to be updated
+
+    // Create geometry and instance count
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+    const instanceCount = 5;
+
+    // InstancedMesh and Texture
+    const instancedMesh = new THREE.InstancedMesh(geometry, null, instanceCount);
+
+    const vertexShader = `
+        attribute vec2 instanceOffset;
+        varying vec2 vStaticUv;
+
+        void main() {
+            // Set a fixed UV for all fragments of the instance
+            vStaticUv = instanceOffset;  // Pass a fixed UV to fragment shader
+
+            vec4 modelPosition = instanceMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * modelViewMatrix * modelPosition;
+        }
+    `;
+
+    const fragmentShader = `
+        uniform sampler2D uTexture;
+        varying vec2 vStaticUv;
+
+        void main() {
+            // Use the static UV from the vertex shader for uniform color across the instance
+            gl_FragColor = texture2D(uTexture, vStaticUv);
+        }
+    `;
+
+    // Shader Material with DataTexture Uniform
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            uTexture: { value: dataTexture }
+        },
+        vertexShader: vertexShader,
+        fragmentShader: fragmentShader,
+    });
+
+    instancedMesh.material = material;
+
+    // Set instance matrix and custom attribute for UV offsets
+    const instanceOffsets = new Float32Array(instanceCount * 2); // 2 values (x, y) for each instance
+
+    for (let i = 0; i < instanceCount; i++) {
+        const dummy = new THREE.Object3D();
+        dummy.position.set(i * 2 - instanceCount, 0, 0);
+        dummy.updateMatrix();
+        instancedMesh.setMatrixAt(i, dummy.matrix);
+
+        // Random UV offsets for each instance
+        instanceOffsets[i * 2] = Math.random() * 0.5;  // offsetX
+        instanceOffsets[i * 2 + 1] = Math.random() * 0.5;  // offsetY
+    }
+
+    // Add the instanceOffset attribute to the geometry
+    geometry.setAttribute('instanceOffset', new THREE.InstancedBufferAttribute(instanceOffsets, 2));
+
+    scene.add(instancedMesh);
+
+    camera.position.z = 10;
+
+    // Animation loop
+    function animate() {
+        requestAnimationFrame(animate);
+        instancedMesh.rotation.y += 0.01;
+        renderer.render(scene, camera);
+    }
+
+    animate();
+</script>
+</body>
+</html>
